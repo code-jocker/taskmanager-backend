@@ -41,13 +41,11 @@ class OrganizationController {
     try {
       const { name, type, district_id, contact_email, contact_phone, address, subscription_type } = req.body;
 
-      // Ensure district exists (auto-create from static list if needed)
       const district = await ensureDistrict(district_id);
       if (!district) {
         return res.status(400).json({ success: false, message: 'Invalid district selected.' });
       }
 
-      // Duplicate check
       const existing = await Organization.findOne({
         where: { name, district_id: district.id, status: { [Op.in]: ['pending', 'approved'] } },
       });
@@ -55,55 +53,65 @@ class OrganizationController {
         return res.status(409).json({ success: false, message: 'An organization with this name already exists in this district.' });
       }
 
-      // Create organization
+      const subType = subscription_type || 'monthly';
+      const code    = generateOrgCode(district.code);
+      const subscriptionEnd = calculateSubscriptionEnd(subType, new Date());
+      const amount  = getSubscriptionAmount(subType, type);
+
+      // Auto-approve immediately after payment — district admin manages later
       const organization = await Organization.create({
         name, type,
-        district_id:       district.id,
+        district_id:          district.id,
         contact_email,
-        contact_phone:     contact_phone || null,
-        address:           address       || null,
-        subscription_type: subscription_type || 'monthly',
-        status:            'pending',
-        payment_status:    'pending',
+        contact_phone:        contact_phone || null,
+        address:              address       || null,
+        subscription_type:    subType,
+        status:               'approved',
+        payment_status:       'paid',
+        code,
+        approved_at:          new Date(),
+        subscription_expires: subscriptionEnd,
       });
 
-      // Create approval request
-      await ApprovalRequest.create({
-        organization_id:        organization.id,
-        request_type:           'registration',
-        status:                 'pending',
-        business_justification: `New ${type} registration: ${name}`,
-        submitted_documents:    { contact_email, contact_phone, address },
-      });
-
-      // Create payment record
-      const amount = getSubscriptionAmount(subscription_type || 'monthly', type);
+      // Record payment as completed
       await Payment.create({
         organization_id:   organization.id,
         amount,
         currency:          'RWF',
         payment_method:    'mobile_money',
-        status:            'pending',
-        due_date:          new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-        subscription_type: subscription_type || 'monthly',
-        description:       `${subscription_type} subscription for ${name}`,
+        status:            'completed',
+        payment_date:      new Date(),
+        due_date:          new Date(),
+        subscription_type: subType,
+        description:       `${subType} subscription for ${name}`,
         total_amount:      amount,
         invoice_number:    `INV-${Date.now()}`,
       });
 
+      // Create org admin user (status pending until they set their password)
+      await User.create({
+        name:            `${name} Admin`,
+        email:           contact_email,
+        password:        Math.random().toString(36) + Date.now().toString(36),
+        role:            'organization_admin',
+        organization_id: organization.id,
+        status:          'pending',
+      });
+
       return res.status(201).json({
         success: true,
-        message: 'Organization registered successfully. Awaiting district admin approval.',
+        message: 'Registration successful! Your organization is now active.',
         data: {
           organization: {
             id:       organization.id,
             name:     organization.name,
             type:     organization.type,
             status:   organization.status,
+            code,
             district: district.name,
           },
-          payment_amount:   amount,
-          payment_due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          code,
+          payment_amount: amount,
         },
       });
 
@@ -187,7 +195,7 @@ class OrganizationController {
       const adminUser = await User.findOne({
         where: { organization_id: organization.id, role: 'organization_admin' }
       });
-      const accountSetup = !!(adminUser && adminUser.last_login);
+      const accountSetup = !!(adminUser && adminUser.status === 'active');
 
       return res.json({
         success: true,
@@ -331,6 +339,19 @@ function getSubscriptionAmount(subscriptionType, orgType) {
     company: { monthly: 75000, quarterly: 202500, yearly: 720000 },
   };
   return prices[orgType]?.[subscriptionType] || 50000;
+}
+
+function generateOrgCode(districtCode = 'RW') {
+  const num = Math.floor(1000 + Math.random() * 9000);
+  return `${districtCode.substring(0, 4).toUpperCase()}-${num}`;
+}
+
+function calculateSubscriptionEnd(subscriptionType, fromDate) {
+  const d = new Date(fromDate);
+  if (subscriptionType === 'quarterly') d.setMonth(d.getMonth() + 3);
+  else if (subscriptionType === 'yearly') d.setFullYear(d.getFullYear() + 1);
+  else d.setMonth(d.getMonth() + 1);
+  return d;
 }
 
 export default new OrganizationController();
