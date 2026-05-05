@@ -82,7 +82,7 @@ export const schemas = {
     name: Joi.string().min(2).max(100).required(),
     code: Joi.string().min(2).max(20).required(),
     description: Joi.string().optional(),
-    manager_id: Joi.number().integer().positive().required(),
+    manager_id: Joi.number().integer().positive().optional(),
     type: Joi.string().valid('class', 'department', 'team').default('class'),
     academic_year: Joi.string().pattern(/^\d{4}-\d{4}$/).optional(),
     semester: Joi.string().valid('1', '2', '3').default('1'),

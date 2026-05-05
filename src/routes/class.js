@@ -13,7 +13,7 @@ router.use(organizationScopeMiddleware);
 
 // Create class/department
 router.post('/',
-  roleMiddleware(['organization_admin']),
+  roleMiddleware(['organization_admin', 'teacher']),
   validateRequest(schemas.classCreation),
   auditLogger('create_class', 'class'),
   ClassController.createClass
@@ -39,6 +39,26 @@ router.get('/:id/stats',
   validateParams(Joi.object({ id: Joi.number().integer().positive().required() })),
   auditLogger('view_class_stats', 'analytics'),
   ClassController.getClassStats
+);
+
+// Add student to class
+router.post('/:id/students',
+  roleMiddleware(['organization_admin', 'teacher']),
+  validateParams(Joi.object({ id: Joi.number().integer().positive().required() })),
+  validateRequest(Joi.object({ student_id: Joi.number().integer().positive().required() })),
+  auditLogger('add_student_to_class', 'class'),
+  ClassController.addStudent
+);
+
+// Remove student from class
+router.delete('/:id/students/:studentId',
+  roleMiddleware(['organization_admin', 'teacher']),
+  validateParams(Joi.object({
+    id: Joi.number().integer().positive().required(),
+    studentId: Joi.number().integer().positive().required()
+  })),
+  auditLogger('remove_student_from_class', 'class'),
+  ClassController.removeStudent
 );
 
 // Create subject in a class

@@ -9,13 +9,16 @@ class ClassController {
       const { name, code, description, manager_id, type, academic_year, semester, max_students } = req.body;
       const organization_id = req.user.organization_id;
 
-      // Verify manager belongs to this organization
-      const manager = await User.findOne({
-        where: { id: manager_id, organization_id, role: { [Op.in]: ['teacher', 'organization_admin', 'worker'] } }
-      });
-
-      if (!manager) {
-        return res.status(400).json({ success: false, message: 'Invalid manager. Must be a teacher or admin in this organization.' });
+      // If manager_id provided, verify it — otherwise default to the creator
+      let resolvedManagerId = req.user.id;
+      if (manager_id) {
+        const manager = await User.findOne({
+          where: { id: manager_id, organization_id, role: { [Op.in]: ['teacher', 'organization_admin', 'worker'] } }
+        });
+        if (!manager) {
+          return res.status(400).json({ success: false, message: 'Invalid manager. Must be a teacher or admin in this organization.' });
+        }
+        resolvedManagerId = manager_id;
       }
 
       const existing = await Class.findOne({ where: { code, organization_id } });
@@ -24,8 +27,12 @@ class ClassController {
       }
 
       const cls = await Class.create({
-        name, code, description, manager_id, type: type || 'class',
-        academic_year, semester, max_students: max_students || 50,
+        name, code, description,
+        manager_id: resolvedManagerId,
+        type: type || 'class',
+        academic_year: academic_year || null,
+        semester: semester || '1',
+        max_students: max_students || 50,
         organization_id
       });
 
@@ -181,6 +188,74 @@ class ClassController {
       res.status(201).json({ success: true, message: 'Subject created successfully', data: subject });
     } catch (error) {
       res.status(500).json({ success: false, message: 'Failed to create subject', error: error.message });
+    }
+  }
+
+  // Add student to class
+  async addStudent(req, res) {
+    try {
+      const { student_id } = req.body; // user id of the student
+      const class_id = req.params.id;
+      const organization_id = req.user.organization_id;
+
+      const cls = await Class.findOne({ where: { id: class_id, organization_id } });
+      if (!cls) return res.status(404).json({ success: false, message: 'Class not found' });
+
+      // Only class manager (teacher) or org admin can add students
+      if (req.user.role === 'teacher' && cls.manager_id !== req.user.id) {
+        return res.status(403).json({ success: false, message: 'Only the class teacher can add students' });
+      }
+
+      const student = await User.findOne({
+        where: { id: student_id, organization_id, role: { [Op.in]: ['student', 'intern'] } }
+      });
+      if (!student) return res.status(404).json({ success: false, message: 'Student not found in this organization' });
+
+      const profile = await StudentProfile.findOne({ where: { user_id: student_id } });
+      if (!profile) return res.status(404).json({ success: false, message: 'Student profile not found' });
+
+      if (profile.class_id === parseInt(class_id)) {
+        return res.status(409).json({ success: false, message: 'Student is already in this class' });
+      }
+
+      const oldClassId = profile.class_id;
+      await profile.update({ class_id: parseInt(class_id) });
+
+      // Update student counts
+      await Class.increment('current_students', { where: { id: class_id } });
+      if (oldClassId) await Class.decrement('current_students', { where: { id: oldClassId } });
+
+      res.json({ success: true, message: `${student.name} added to class` });
+    } catch (error) {
+      res.status(500).json({ success: false, message: 'Failed to add student', error: error.message });
+    }
+  }
+
+  // Remove student from class
+  async removeStudent(req, res) {
+    try {
+      const class_id = req.params.id;
+      const student_id = req.params.studentId;
+      const organization_id = req.user.organization_id;
+
+      const cls = await Class.findOne({ where: { id: class_id, organization_id } });
+      if (!cls) return res.status(404).json({ success: false, message: 'Class not found' });
+
+      if (req.user.role === 'teacher' && cls.manager_id !== req.user.id) {
+        return res.status(403).json({ success: false, message: 'Only the class teacher can remove students' });
+      }
+
+      const profile = await StudentProfile.findOne({
+        where: { user_id: student_id, class_id: parseInt(class_id) }
+      });
+      if (!profile) return res.status(404).json({ success: false, message: 'Student not in this class' });
+
+      await profile.update({ class_id: null });
+      await Class.decrement('current_students', { where: { id: class_id } });
+
+      res.json({ success: true, message: 'Student removed from class' });
+    } catch (error) {
+      res.status(500).json({ success: false, message: 'Failed to remove student', error: error.message });
     }
   }
 
