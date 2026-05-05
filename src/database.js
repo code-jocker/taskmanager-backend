@@ -4,19 +4,27 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // ── 1. Create Sequelize instance ──────────────────────────────────────────────
-const sequelize = new Sequelize(
-  process.env.DB_NAME     || 'rwanda_task_management',
-  process.env.DB_USERNAME || 'root',
-  process.env.DB_PASSWORD || '',
-  {
-    host:    process.env.DB_HOST || 'localhost',
-    port:    parseInt(process.env.DB_PORT || '3306'),
-    dialect: 'mysql',
-    logging: false,
-    define:  { paranoid: true, timestamps: true, underscored: true, freezeTableName: true },
-    pool:    { max: 10, min: 0, acquire: 30000, idle: 10000 },
-  }
-);
+const sequelize = process.env.DATABASE_URL
+  ? new Sequelize(process.env.DATABASE_URL, {
+      dialect: 'postgres',
+      dialectOptions: { ssl: { require: true, rejectUnauthorized: false } },
+      logging: false,
+      define: { paranoid: true, timestamps: true, underscored: true, freezeTableName: true },
+      pool: { max: 10, min: 0, acquire: 30000, idle: 10000 },
+    })
+  : new Sequelize(
+      process.env.DB_NAME     || 'rwanda_task_management',
+      process.env.DB_USERNAME || 'root',
+      process.env.DB_PASSWORD || '',
+      {
+        host:    process.env.DB_HOST || 'localhost',
+        port:    parseInt(process.env.DB_PORT || '5432'),
+        dialect: process.env.DB_DIALECT || 'postgres',
+        logging: false,
+        define:  { paranoid: true, timestamps: true, underscored: true, freezeTableName: true },
+        pool:    { max: 10, min: 0, acquire: 30000, idle: 10000 },
+      }
+    );
 
 // ── 2. Define models inline (no circular imports) ─────────────────────────────
 
@@ -24,7 +32,7 @@ const District = sequelize.define('District', {
   id:     { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   name:   { type: DataTypes.STRING(100), allowNull: false, unique: true },
   code:   { type: DataTypes.STRING(10),  allowNull: false, unique: true },
-  status: { type: DataTypes.ENUM('active', 'inactive'), defaultValue: 'active' },
+  status: { type: DataTypes.STRING(50), defaultValue: 'active' },
 }, { paranoid: true, timestamps: true });
 
 const DistrictAdmin = sequelize.define('DistrictAdmin', {
@@ -34,7 +42,7 @@ const DistrictAdmin = sequelize.define('DistrictAdmin', {
   password:       { type: DataTypes.STRING(255), allowNull: false },
   phone:          { type: DataTypes.STRING(15) },
   district_id:    { type: DataTypes.INTEGER, allowNull: false },
-  status:         { type: DataTypes.ENUM('active', 'inactive', 'suspended'), defaultValue: 'active' },
+  status:         { type: DataTypes.STRING(50), defaultValue: 'active' },
   last_login:     { type: DataTypes.DATE },
   login_attempts: { type: DataTypes.INTEGER, defaultValue: 0 },
   locked_until:   { type: DataTypes.DATE },
@@ -55,12 +63,12 @@ DistrictAdmin.prototype.incrementLoginAttempts = async function() {
 const Organization = sequelize.define('Organization', {
   id:                  { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   name:                { type: DataTypes.STRING(200), allowNull: false },
-  type:                { type: DataTypes.ENUM('school', 'company'), allowNull: false },
+  type:                { type: DataTypes.STRING(50), allowNull: false },
   district_id:         { type: DataTypes.INTEGER, allowNull: false },
-  status:              { type: DataTypes.ENUM('pending', 'approved', 'rejected', 'suspended'), defaultValue: 'pending' },
+  status:              { type: DataTypes.STRING(50), defaultValue: 'pending' },
   code:                { type: DataTypes.STRING(20), unique: true },
-  payment_status:      { type: DataTypes.ENUM('pending', 'paid', 'overdue', 'cancelled'), defaultValue: 'pending' },
-  subscription_type:   { type: DataTypes.ENUM('monthly', 'quarterly', 'yearly'), defaultValue: 'monthly' },
+  payment_status:      { type: DataTypes.STRING(50), defaultValue: 'pending' },
+  subscription_type:   { type: DataTypes.STRING(50), defaultValue: 'monthly' },
   subscription_expires:{ type: DataTypes.DATE },
   contact_email:       { type: DataTypes.STRING(150), allowNull: false, validate: { isEmail: true } },
   contact_phone:       { type: DataTypes.STRING(15) },
@@ -84,9 +92,9 @@ const User = sequelize.define('User', {
   email:                    { type: DataTypes.STRING(150), allowNull: false, validate: { isEmail: true } },
   password:                 { type: DataTypes.STRING(255), allowNull: false },
   phone:                    { type: DataTypes.STRING(15) },
-  role:                     { type: DataTypes.ENUM('organization_admin', 'teacher', 'student', 'worker', 'intern'), allowNull: false },
+  role:                     { type: DataTypes.STRING(50), allowNull: false },
   organization_id:          { type: DataTypes.INTEGER, allowNull: false },
-  status:                   { type: DataTypes.ENUM('active', 'inactive', 'suspended', 'pending'), defaultValue: 'pending' },
+  status:                   { type: DataTypes.STRING(50), defaultValue: 'pending' },
   email_verified:           { type: DataTypes.BOOLEAN, defaultValue: false },
   email_verification_token: { type: DataTypes.STRING(255) },
   password_reset_token:     { type: DataTypes.STRING(255) },
@@ -118,12 +126,12 @@ const Class = sequelize.define('Class', {
   description:     { type: DataTypes.TEXT },
   organization_id: { type: DataTypes.INTEGER, allowNull: false },
   manager_id:      { type: DataTypes.INTEGER, allowNull: false },
-  type:            { type: DataTypes.ENUM('class', 'department', 'team'), defaultValue: 'class' },
+  type:            { type: DataTypes.STRING(50), defaultValue: 'class' },
   academic_year:   { type: DataTypes.STRING(10) },
-  semester:        { type: DataTypes.ENUM('1', '2', '3'), defaultValue: '1' },
+  semester:        { type: DataTypes.STRING(50), defaultValue: '1' },
   max_students:    { type: DataTypes.INTEGER, defaultValue: 50 },
   current_students:{ type: DataTypes.INTEGER, defaultValue: 0 },
-  status:          { type: DataTypes.ENUM('active', 'inactive', 'archived'), defaultValue: 'active' },
+  status:          { type: DataTypes.STRING(50), defaultValue: 'active' },
 }, { paranoid: true, timestamps: true });
 
 const Subject = sequelize.define('Subject', {
@@ -135,7 +143,7 @@ const Subject = sequelize.define('Subject', {
   teacher_id:   { type: DataTypes.INTEGER, allowNull: false },
   credits:      { type: DataTypes.INTEGER, defaultValue: 1 },
   hours_per_week:{ type: DataTypes.INTEGER, defaultValue: 1 },
-  status:       { type: DataTypes.ENUM('active', 'inactive', 'completed'), defaultValue: 'active' },
+  status:       { type: DataTypes.STRING(50), defaultValue: 'active' },
 }, { paranoid: true, timestamps: true });
 
 const StudentProfile = sequelize.define('StudentProfile', {
@@ -145,10 +153,10 @@ const StudentProfile = sequelize.define('StudentProfile', {
   class_id:            { type: DataTypes.INTEGER, allowNull: false },
   admission_date:      { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
   academic_year:       { type: DataTypes.STRING(10) },
-  semester:            { type: DataTypes.ENUM('1', '2', '3'), defaultValue: '1' },
+  semester:            { type: DataTypes.STRING(50), defaultValue: '1' },
   guardian_name:       { type: DataTypes.STRING(100) },
   guardian_phone:      { type: DataTypes.STRING(15) },
-  status:              { type: DataTypes.ENUM('active', 'graduated', 'transferred', 'suspended', 'dropped'), defaultValue: 'active' },
+  status:              { type: DataTypes.STRING(50), defaultValue: 'active' },
 }, { paranoid: true, timestamps: true });
 
 const EmployeeProfile = sequelize.define('EmployeeProfile', {
@@ -158,9 +166,9 @@ const EmployeeProfile = sequelize.define('EmployeeProfile', {
   department:      { type: DataTypes.STRING(100), allowNull: false },
   position:        { type: DataTypes.STRING(100), allowNull: false },
   hire_date:       { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
-  employment_type: { type: DataTypes.ENUM('full_time', 'part_time', 'contract', 'intern'), allowNull: false },
+  employment_type: { type: DataTypes.STRING(50), allowNull: false },
   supervisor_id:   { type: DataTypes.INTEGER },
-  status:          { type: DataTypes.ENUM('active', 'terminated', 'resigned', 'on_leave', 'suspended'), defaultValue: 'active' },
+  status:          { type: DataTypes.STRING(50), defaultValue: 'active' },
 }, { paranoid: true, timestamps: true });
 
 const Task = sequelize.define('Task', {
@@ -172,11 +180,11 @@ const Task = sequelize.define('Task', {
   created_by:              { type: DataTypes.INTEGER, allowNull: false },
   class_id:                { type: DataTypes.INTEGER },
   subject_id:              { type: DataTypes.INTEGER },
-  priority:                { type: DataTypes.ENUM('low', 'medium', 'high', 'urgent'), defaultValue: 'medium' },
-  type:                    { type: DataTypes.ENUM('assignment', 'project', 'quiz', 'exam', 'homework', 'task'), defaultValue: 'assignment' },
-  status:                  { type: DataTypes.ENUM('draft', 'published', 'closed', 'cancelled'), defaultValue: 'draft' },
+  priority:                { type: DataTypes.STRING(50), defaultValue: 'medium' },
+  type:                    { type: DataTypes.STRING(50), defaultValue: 'assignment' },
+  status:                  { type: DataTypes.STRING(50), defaultValue: 'draft' },
   max_score:               { type: DataTypes.INTEGER, defaultValue: 100 },
-  submission_type:         { type: DataTypes.ENUM('file', 'text', 'both'), defaultValue: 'both' },
+  submission_type:         { type: DataTypes.STRING(50), defaultValue: 'both' },
   late_submission_allowed: { type: DataTypes.BOOLEAN, defaultValue: true },
   late_penalty_percentage: { type: DataTypes.INTEGER, defaultValue: 10 },
   total_submissions:       { type: DataTypes.INTEGER, defaultValue: 0 },
@@ -191,7 +199,7 @@ const Submission = sequelize.define('Submission', {
   file_url:       { type: DataTypes.STRING(500) },
   file_name:      { type: DataTypes.STRING(255) },
   file_size:      { type: DataTypes.INTEGER },
-  status:         { type: DataTypes.ENUM('draft', 'submitted', 'graded', 'returned', 'resubmitted'), defaultValue: 'draft' },
+  status:         { type: DataTypes.STRING(50), defaultValue: 'draft' },
   submitted_at:   { type: DataTypes.DATE },
   is_late:        { type: DataTypes.BOOLEAN, defaultValue: false },
   score:          { type: DataTypes.DECIMAL(5, 2) },
@@ -212,9 +220,9 @@ const Reminder = sequelize.define('Reminder', {
   task_id:       { type: DataTypes.INTEGER, allowNull: false },
   user_id:       { type: DataTypes.INTEGER, allowNull: false },
   reminder_time: { type: DataTypes.DATE, allowNull: false },
-  type:          { type: DataTypes.ENUM('email', 'sms', 'push', 'in_app'), defaultValue: 'email' },
+  type:          { type: DataTypes.STRING(50), defaultValue: 'email' },
   message:       { type: DataTypes.TEXT },
-  status:        { type: DataTypes.ENUM('pending', 'sent', 'failed', 'cancelled'), defaultValue: 'pending' },
+  status:        { type: DataTypes.STRING(50), defaultValue: 'pending' },
   sent_at:       { type: DataTypes.DATE },
   retry_count:   { type: DataTypes.INTEGER, defaultValue: 0 },
   created_by:    { type: DataTypes.INTEGER },
@@ -225,12 +233,12 @@ const Payment = sequelize.define('Payment', {
   organization_id:         { type: DataTypes.INTEGER, allowNull: false },
   amount:                  { type: DataTypes.DECIMAL(10, 2), allowNull: false },
   currency:                { type: DataTypes.STRING(3), defaultValue: 'RWF' },
-  payment_method:          { type: DataTypes.ENUM('mobile_money', 'bank_transfer', 'credit_card', 'cash', 'pending'), defaultValue: 'pending' },
+  payment_method:          { type: DataTypes.STRING(50), defaultValue: 'pending' },
   transaction_id:          { type: DataTypes.STRING(100) },
-  status:                  { type: DataTypes.ENUM('pending', 'processing', 'completed', 'failed', 'cancelled', 'refunded'), defaultValue: 'pending' },
+  status:                  { type: DataTypes.STRING(50), defaultValue: 'pending' },
   payment_date:            { type: DataTypes.DATE },
   due_date:                { type: DataTypes.DATE, allowNull: false },
-  subscription_type:       { type: DataTypes.ENUM('monthly', 'quarterly', 'yearly'), allowNull: false },
+  subscription_type:       { type: DataTypes.STRING(50), allowNull: false },
   subscription_start:      { type: DataTypes.DATE },
   subscription_end:        { type: DataTypes.DATE },
   invoice_number:          { type: DataTypes.STRING(50), unique: true },
@@ -244,9 +252,9 @@ const Payment = sequelize.define('Payment', {
 const ApprovalRequest = sequelize.define('ApprovalRequest', {
   id:                    { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   organization_id:       { type: DataTypes.INTEGER, allowNull: false },
-  request_type:          { type: DataTypes.ENUM('registration', 'subscription_change', 'reactivation', 'data_modification'), defaultValue: 'registration' },
-  status:                { type: DataTypes.ENUM('pending', 'under_review', 'approved', 'rejected', 'cancelled'), defaultValue: 'pending' },
-  priority:              { type: DataTypes.ENUM('low', 'medium', 'high', 'urgent'), defaultValue: 'medium' },
+  request_type:          { type: DataTypes.STRING(50), defaultValue: 'registration' },
+  status:                { type: DataTypes.STRING(50), defaultValue: 'pending' },
+  priority:              { type: DataTypes.STRING(50), defaultValue: 'medium' },
   submitted_documents:   { type: DataTypes.JSON },
   business_justification:{ type: DataTypes.TEXT },
   reviewed_by:           { type: DataTypes.INTEGER },
@@ -278,8 +286,8 @@ const AuditLog = sequelize.define('AuditLog', {
   resource_id:      { type: DataTypes.INTEGER },
   ip_address:       { type: DataTypes.STRING(45) },
   user_agent:       { type: DataTypes.TEXT },
-  severity:         { type: DataTypes.ENUM('info', 'warning', 'error', 'critical'), defaultValue: 'info' },
-  category:         { type: DataTypes.ENUM('authentication', 'authorization', 'data_access', 'data_modification', 'system', 'security'), allowNull: false },
+  severity:         { type: DataTypes.STRING(50), defaultValue: 'info' },
+  category:         { type: DataTypes.STRING(50), allowNull: false },
   description:      { type: DataTypes.TEXT },
   metadata:         { type: DataTypes.JSON },
   success:          { type: DataTypes.BOOLEAN, defaultValue: true },

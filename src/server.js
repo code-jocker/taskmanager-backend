@@ -84,11 +84,9 @@ const startServer = async () => {
     await sequelize.authenticate();
     console.log('✅ Database connection established successfully.');
 
-    // Sync database (use { force: true } only in development to recreate tables)
-    if (process.env.NODE_ENV === 'development') {
-      await sequelize.sync({ alter: { drop: false } });
-      console.log('✅ Database synchronized successfully.');
-    }
+    // Sync database
+    await sequelize.sync({ alter: false });
+    console.log('✅ Database synchronized successfully.');
 
     // Start server
     app.listen(PORT, () => {
