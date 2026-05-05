@@ -33,7 +33,11 @@ app.use(generalLimiter);
 // CORS configuration
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',')
-  : ['http://localhost:3000', 'http://localhost:3001']
+  : [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'https://taskmanager-frontend-wbwa.onrender.com',
+    ]
 
 app.use(cors({
   origin: (origin, cb) => {
