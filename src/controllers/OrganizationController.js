@@ -146,27 +146,26 @@ class OrganizationController {
   async checkOrganizationCode(req, res) {
     try {
       const { code } = req.params;
-      const organization = await Organization.findOne({
+      const organizations = await Organization.findAll({
         where:   { code: code.toUpperCase(), status: 'approved' },
         include: [{ model: District, as: 'district' }],
       });
 
-      if (!organization) {
+      if (!organizations.length) {
         return res.status(404).json({ success: false, message: 'Invalid organization code.' });
       }
 
-      if (!organization.isSubscriptionActive()) {
-        return res.status(403).json({ success: false, message: 'Organization subscription has expired.' });
-      }
-
+      // Return district info from first org (all share same district)
+      const first = organizations[0];
       return res.json({
         success: true,
         data: {
           organization: {
-            id:       organization.id,
-            name:     organization.name,
-            type:     organization.type,
-            district: organization.district?.name,
+            id:       first.id,
+            name:     first.district?.name ? `${first.district.name} District` : first.name,
+            type:     first.type,
+            district: first.district?.name,
+            count:    organizations.length,
           },
         },
       });
@@ -342,8 +341,8 @@ function getSubscriptionAmount(subscriptionType, orgType) {
 }
 
 function generateOrgCode(districtCode = 'RW') {
-  const num = Math.floor(1000 + Math.random() * 9000);
-  return `${districtCode.substring(0, 4).toUpperCase()}-${num}`;
+  const year = new Date().getFullYear();
+  return `${districtCode.substring(0, 3).toUpperCase()}-${year}`;
 }
 
 function calculateSubscriptionEnd(subscriptionType, fromDate) {

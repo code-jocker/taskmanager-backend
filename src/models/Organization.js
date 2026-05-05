@@ -33,7 +33,6 @@ const Organization = sequelize.define('Organization', {
   },
   code: {
     type: DataTypes.STRING(12),
-    unique: true,
     validate: {
       len: [6, 12]
     }

@@ -1,4 +1,5 @@
 import jwt from 'jsonwebtoken';
+import { Op } from 'sequelize';
 import { User, DistrictAdmin, Organization, StudentProfile, EmployeeProfile, District } from '../database.js';
 
 class AuthController {
@@ -179,32 +180,19 @@ class AuthController {
     try {
       const { organization_code, student_id, password } = req.body;
 
-      // Find organization by code
-      const organization = await Organization.findOne({
-        where: { 
-          code: organization_code,
-          status: 'approved'
-        }
+      // Find all approved orgs sharing this district-year code
+      const organizations = await Organization.findAll({
+        where: { code: organization_code.toUpperCase(), status: 'approved' }
       });
 
-      if (!organization) {
-        return res.status(404).json({
-          success: false,
-          message: 'Invalid organization code'
-        });
+      if (!organizations.length) {
+        return res.status(404).json({ success: false, message: 'Invalid organization code' });
       }
 
-      // Check subscription
-      if (!organization.isSubscriptionActive()) {
-        return res.status(403).json({
-          success: false,
-          message: 'Organization subscription expired'
-        });
-      }
+      const orgIds = organizations.map(o => o.id);
 
-      // Find user by student/employee ID within the organization
+      // Find the student/employee across all orgs with this code
       const user = await User.findOne({
-        where: { organization_id: organization.id },
         include: [
           {
             model: StudentProfile,
@@ -219,32 +207,21 @@ class AuthController {
             required: false
           },
           { model: Organization, as: 'organization' }
-        ]
+        ],
+        where: { organization_id: { [Op.in]: orgIds } }
       });
 
       if (!user || (!user.studentProfile && !user.employeeProfile)) {
-        return res.status(404).json({
-          success: false,
-          message: 'Student/Employee ID not found in this organization'
-        });
+        return res.status(404).json({ success: false, message: 'Student/Employee ID not found' });
       }
 
       const isValidPassword = await user.validatePassword(password);
-
       if (!isValidPassword) {
         await user.incrementLoginAttempts();
-        return res.status(401).json({
-          success: false,
-          message: 'Invalid password'
-        });
+        return res.status(401).json({ success: false, message: 'Invalid password' });
       }
 
-      // Reset login attempts and update last login
-      await user.update({
-        login_attempts: 0,
-        locked_until: null,
-        last_login: new Date()
-      });
+      await user.update({ login_attempts: 0, locked_until: null, last_login: new Date() });
 
       const token = this.generateToken(user);
 
@@ -254,22 +231,18 @@ class AuthController {
         data: {
           token,
           user: {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            organization,
-            profile: user.studentProfile || user.employeeProfile
+            id:           user.id,
+            name:         user.name,
+            email:        user.email,
+            role:         user.role,
+            organization: user.organization,
+            profile:      user.studentProfile || user.employeeProfile
           }
         }
       });
 
     } catch (error) {
-      res.status(500).json({
-        success: false,
-        message: 'Login failed',
-        error: error.message
-      });
+      res.status(500).json({ success: false, message: 'Login failed', error: error.message });
     }
   }
 
