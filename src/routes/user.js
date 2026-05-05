@@ -45,7 +45,7 @@ router.post('/',
 );
 
 // Bulk import students/employees from CSV/Excel
-router.post('/import',
+router.post('/bulk-import',
   roleMiddleware(['organization_admin']),
   (req, res, next) => { req.uploadSubDir = 'imports'; next(); },
   uploadCSV,

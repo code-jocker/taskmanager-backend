@@ -300,8 +300,9 @@ class OrganizationController {
   async getStats(req, res) {
     try {
       const organizationId = req.user.organization_id;
+      const { Class, Task } = await import('../database.js');
 
-      const [total_users, users_by_role, active_users, recent_payments] = await Promise.all([
+      const [total_users, users_by_role, active_users, total_classes, total_tasks, recent_payments] = await Promise.all([
         User.count({ where: { organization_id: organizationId } }),
         User.findAll({
           where:      { organization_id: organizationId },
@@ -310,10 +311,14 @@ class OrganizationController {
           raw:        true,
         }),
         User.count({ where: { organization_id: organizationId, status: 'active' } }),
+        Class.count({ where: { organization_id: organizationId } }),
+        Task.count({
+          include: [{ model: Class, as: 'class', where: { organization_id: organizationId }, attributes: [] }]
+        }),
         Payment.findAll({ where: { organization_id: organizationId }, order: [['created_at', 'DESC']], limit: 10 }),
       ]);
 
-      return res.json({ success: true, data: { total_users, users_by_role, active_users, recent_payments } });
+      return res.json({ success: true, data: { total_users, users_by_role, active_users, total_classes, total_tasks, recent_payments } });
     } catch (error) {
       return res.status(500).json({ success: false, message: 'Failed to fetch stats.', error: error.message });
     }
