@@ -31,10 +31,16 @@ app.use(securityHeaders);
 app.use(generalLimiter);
 
 // CORS configuration
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://localhost:3000', 'http://localhost:3001']
+
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://yourdomain.com'] 
-    : ['http://localhost:3000', 'http://localhost:3001'],
+  origin: (origin, cb) => {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true)
+    cb(new Error('Not allowed by CORS'))
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -89,12 +95,20 @@ const startServer = async () => {
     console.log('✅ Database synchronized successfully.');
 
     // Start server
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
       console.log(` Server running on port ${PORT}`);
       console.log(`📊 Environment: ${process.env.NODE_ENV}`);
       console.log(`🔗 API Base URL: http://localhost:${PORT}/api`);
       console.log(`💊 Health Check: http://localhost:${PORT}/health`);
-     
+    });
+
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`❌ Port ${PORT} is already in use. Run: npx kill-port ${PORT}`);
+      } else {
+        console.error('❌ Server error:', err.message);
+      }
+      process.exit(1);
     });
 
     // Start reminder service (uncomment when configured)
