@@ -1,13 +1,29 @@
-import { Class, Subject, User, StudentProfile, Organization, Task, Submission } from '../database.js';
+import { Class, Subject, User, StudentProfile, Organization, District, Task, Submission } from '../database.js';
 import sequelize from '../database.js';
 import { Op } from 'sequelize';
+
+// Build a clean uppercase slug from a string: "Kigali School" -> "KIGALISCHOOL"
+function slugify(str) {
+  return str.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 8);
+}
 
 class ClassController {
   // Create class/department
   async createClass(req, res) {
     try {
-      const { name, code, description, manager_id, type, academic_year, semester, max_students } = req.body;
+      const { name, description, manager_id, type, academic_year, semester, max_students } = req.body;
       const organization_id = req.user.organization_id;
+
+      // Load org + district to build the unique code
+      const org = await Organization.findByPk(organization_id, {
+        include: [{ model: (await import('../models/District.js')).default, as: 'district' }]
+      });
+
+      const districtCode = org?.district?.code || 'RW';
+      const orgSlug      = slugify(org?.name || 'ORG');
+      const year         = new Date().getFullYear();
+      const classSlug    = slugify(name);
+      const code         = `${districtCode}-${orgSlug}-${year}-${classSlug}`.substring(0, 50);
 
       // If manager_id provided, verify it — otherwise default to the creator
       let resolvedManagerId = req.user.id;
@@ -23,7 +39,7 @@ class ClassController {
 
       const existing = await Class.findOne({ where: { code, organization_id } });
       if (existing) {
-        return res.status(409).json({ success: false, message: 'Class code already exists in this organization' });
+        return res.status(409).json({ success: false, message: 'A class with this name already exists in your organization this year.' });
       }
 
       const cls = await Class.create({
