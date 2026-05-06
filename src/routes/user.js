@@ -36,9 +36,9 @@ router.post('/signup',
 router.use(authMiddleware);
 router.use(organizationScopeMiddleware);
 
-// Create user (teacher/worker) — Org Admin only
+// Create user (teacher/worker/student) — Org Admin or Teacher (for students)
 router.post('/',
-  roleMiddleware(['organization_admin']),
+  roleMiddleware(['organization_admin', 'teacher']),
   validateRequest(schemas.userCreation),
   auditLogger('create_user', 'user'),
   UserController.createUser

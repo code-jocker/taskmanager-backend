@@ -217,10 +217,8 @@ class ClassController {
       const cls = await Class.findOne({ where: { id: class_id, organization_id } });
       if (!cls) return res.status(404).json({ success: false, message: 'Class not found' });
 
-      // Only class manager (teacher) or org admin can add students
-      if (req.user.role === 'teacher' && cls.manager_id !== req.user.id) {
-        return res.status(403).json({ success: false, message: 'Only the class teacher can add students' });
-      }
+      // Org admins can add to any class, teachers can add to any class in their org
+      // No restriction on which teacher can add students
 
       const student = await User.findOne({
         where: { id: student_id, organization_id, role: { [Op.in]: ['student', 'intern'] } }

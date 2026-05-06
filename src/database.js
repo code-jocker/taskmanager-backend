@@ -6,25 +6,15 @@ dotenv.config();
 // ── 1. Create Sequelize instance ──────────────────────────────────────────────
 const sequelize = process.env.DATABASE_URL
   ? new Sequelize(process.env.DATABASE_URL, {
-      dialect: 'postgres',
-      dialectOptions: { ssl: { require: true, rejectUnauthorized: false } },
-      logging: false,
       define: { paranoid: true, timestamps: true, underscored: true, freezeTableName: true },
       pool: { max: 10, min: 0, acquire: 30000, idle: 10000 },
     })
-  : new Sequelize(
-      process.env.DB_NAME     || 'rwanda_task_management',
-      process.env.DB_USERNAME || 'root',
-      process.env.DB_PASSWORD || '',
-      {
-        host:    process.env.DB_HOST || 'localhost',
-        port:    parseInt(process.env.DB_PORT || '5432'),
-        dialect: process.env.DB_DIALECT || 'postgres',
-        logging: false,
-        define:  { paranoid: true, timestamps: true, underscored: true, freezeTableName: true },
-        pool:    { max: 10, min: 0, acquire: 30000, idle: 10000 },
-      }
-    );
+  : new Sequelize({
+      dialect: 'sqlite',
+      storage: './task_management.db',
+      logging: false,
+      define: { paranoid: true, timestamps: true, underscored: true, freezeTableName: true },
+    });
 
 // ── 2. Define models inline (no circular imports) ─────────────────────────────
 
@@ -149,7 +139,7 @@ const Subject = sequelize.define('Subject', {
 const StudentProfile = sequelize.define('StudentProfile', {
   id:                  { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
   user_id:             { type: DataTypes.INTEGER, allowNull: false, unique: true },
-  student_id:          { type: DataTypes.STRING(50), allowNull: false },
+  student_id:          { type: DataTypes.STRING(50), allowNull: false, unique: true },
   class_id:            { type: DataTypes.INTEGER, allowNull: false },
   admission_date:      { type: DataTypes.DATE, defaultValue: DataTypes.NOW },
   academic_year:       { type: DataTypes.STRING(10) },

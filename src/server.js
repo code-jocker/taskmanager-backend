@@ -95,7 +95,7 @@ const startServer = async () => {
     console.log('✅ Database connection established successfully.');
 
     // Sync database
-    await sequelize.sync({ alter: false });
+    await sequelize.sync({ alter: true });
     console.log('✅ Database synchronized successfully.');
 
     // Start server

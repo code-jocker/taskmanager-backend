@@ -4,12 +4,51 @@ import fs from 'fs';
 import { User, StudentProfile, EmployeeProfile, Organization, Class } from '../database.js';
 import { Op } from 'sequelize';
 
+// Generate unique student ID: ST-xxxx (4-digit sequential)
+async function generateStudentId() {
+  // Get all existing student IDs that match the pattern
+  const profiles = await StudentProfile.findAll({
+    attributes: ['student_id'],
+    where: {
+      student_id: { [Op.like]: 'ST-%' }
+    }
+  });
+
+  // Extract numbers and find max
+  let maxNum = 0;
+  profiles.forEach(profile => {
+    const match = profile.student_id.match(/^ST-(\d{4})$/);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (num > maxNum) maxNum = num;
+    }
+  });
+
+  // Next number
+  const nextNum = maxNum + 1;
+  const newId = `ST-${nextNum.toString().padStart(4, '0')}`;
+
+  // Check if exists (to handle race conditions)
+  const existing = await StudentProfile.findOne({ where: { student_id: newId } });
+  if (existing) {
+    // If collision, recurse (though unlikely with sequential)
+    return await generateStudentId();
+  }
+
+  return newId;
+}
+
 class UserController {
-  // Create user (teacher/worker) by Org Admin
+  // Create user (teacher/worker/student) by Org Admin or Teacher (for students)
   async createUser(req, res) {
     try {
       const { name, email, password, phone, role, employee_id, position, department, employment_type } = req.body;
       const organization_id = req.user.organization_id;
+
+      // Teachers can only create students/interns
+      if (req.user.role === 'teacher' && !['student', 'intern'].includes(role)) {
+        return res.status(403).json({ success: false, message: 'Teachers can only create student accounts' });
+      }
 
       const organization = await Organization.findByPk(organization_id);
       if (!organization.canAddUsers()) {
@@ -37,13 +76,49 @@ class UserController {
           department: department || 'General',
           employment_type: employment_type || 'full_time'
         });
+      } else if (['student', 'intern'].includes(role)) {
+        // Generate student ID
+        let studentId;
+        try {
+          studentId = await generateStudentId();
+        } catch (error) {
+          return res.status(500).json({ success: false, message: 'Failed to generate student ID', error: error.message });
+        }
+
+        let classId = req.body.class_id;
+        if (classId) {
+          // Validate class exists and belongs to org
+          const cls = await Class.findOne({ where: { id: classId, organization_id } });
+          if (!cls) {
+            return res.status(400).json({ success: false, message: 'Invalid class' });
+          }
+          // Check if class has space
+          if (cls.current_students >= cls.max_students) {
+            return res.status(400).json({ success: false, message: 'Class is full' });
+          }
+        }
+
+        await StudentProfile.create({
+          user_id: user.id,
+          student_id: studentId,
+          class_id: classId || null,
+          status: 'active'
+        });
+
+        // Increment class current_students if assigned
+        if (classId) {
+          await Class.increment('current_students', { where: { id: classId } });
+        }
       }
 
       await organization.increment('current_users');
 
       const created = await User.findByPk(user.id, {
         attributes: { exclude: ['password'] },
-        include: [{ model: EmployeeProfile, as: 'employeeProfile' }]
+        include: [
+          { model: EmployeeProfile, as: 'employeeProfile' },
+          { model: StudentProfile, as: 'studentProfile' }
+        ]
       });
 
       res.status(201).json({ success: true, message: 'User created successfully', data: created });

@@ -42,7 +42,12 @@ export const schemas = {
     employee_id: Joi.string().optional(),
     position: Joi.string().optional(),
     department: Joi.string().optional(),
-    employment_type: Joi.string().valid('full_time', 'part_time', 'contract', 'intern').optional()
+    employment_type: Joi.string().valid('full_time', 'part_time', 'contract', 'intern').optional(),
+    class_id: Joi.when('role', {
+      is: Joi.valid('student', 'intern'),
+      then: Joi.number().integer().positive().optional(),
+      otherwise: Joi.forbidden()
+    })
   }),
 
   // Login
