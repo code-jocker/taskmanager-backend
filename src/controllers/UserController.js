@@ -51,9 +51,9 @@ class UserController {
       }
 
       const organization = await Organization.findByPk(organization_id);
-      if (!organization.canAddUsers()) {
-        return res.status(403).json({ success: false, message: 'User limit reached for this organization' });
-      }
+      // if (!organization.canAddUsers()) {
+      //   return res.status(403).json({ success: false, message: 'User limit reached for this organization' });
+      // }
 
       const existing = await User.findOne({ where: { email, organization_id } });
       if (existing) {
