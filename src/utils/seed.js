@@ -2,6 +2,42 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import sequelize, { District, DistrictAdmin } from '../database.js';
+import { Op } from 'sequelize';
+
+// Generate unique student ID: ST-xxxx (4-digit sequential)
+async function generateStudentId() {
+  const { StudentProfile } = await import('../database.js');
+  // Get all existing student IDs that match the pattern
+  const profiles = await StudentProfile.findAll({
+    attributes: ['student_id'],
+    where: {
+      student_id: { [Op.like]: 'ST-%' }
+    }
+  });
+
+  // Extract numbers and find max
+  let maxNum = 0;
+  profiles.forEach(profile => {
+    const match = profile.student_id.match(/^ST-(\d{4})$/);
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (num > maxNum) maxNum = num;
+    }
+  });
+
+  // Next number
+  const nextNum = maxNum + 1;
+  const newId = `ST-${nextNum.toString().padStart(4, '0')}`;
+
+  // Check if exists (to handle race conditions)
+  const existing = await StudentProfile.findOne({ where: { student_id: newId } });
+  if (existing) {
+    // If collision, recurse (though unlikely with sequential)
+    return await generateStudentId();
+  }
+
+  return newId;
+}
 
 const DISTRICTS = [
   // Kigali City
@@ -104,7 +140,9 @@ async function seed() {
         },
       });
 
-      await User.findOrCreate({
+      const { User: UserModel, Class: ClassModel, StudentProfile: StudentProfileModel } = await import('../database.js');
+
+      await UserModel.findOrCreate({
         where: { email: 'orgadmin@demo.rw' },
         defaults: {
           name: 'Demo Org Admin',
@@ -115,7 +153,69 @@ async function seed() {
           status: 'active',
         },
       });
-      console.log('✅ Demo organization and org admin created');
+
+      // Create a teacher
+      const teacher = await UserModel.findOrCreate({
+        where: { email: 'teacher@demo.rw' },
+        defaults: {
+          name: 'Demo Teacher',
+          email: 'teacher@demo.rw',
+          password: 'Teacher@1234',
+          role: 'teacher',
+          organization_id: org.id,
+          status: 'active',
+        },
+      });
+
+      // Create a class l3sod
+      const cls = await ClassModel.findOrCreate({
+        where: { name: 'l3sod' },
+        defaults: {
+          name: 'l3sod',
+          description: 'Demo Class L3SOD',
+          manager_id: teacher[0].id,
+          type: 'class',
+          academic_year: '2024',
+          semester: '1',
+          max_students: 50,
+          current_students: 0,
+          organization_id: org.id,
+          status: 'active',
+        },
+      });
+
+      // Create some students
+      const students = [
+        { name: 'Alice Uwimana', email: 'alice@l3sod.demo.rw', password: 'Student@1234' },
+        { name: 'Bob Nkurunziza', email: 'bob@l3sod.demo.rw', password: 'Student@1234' },
+        { name: 'Carol Mukamana', email: 'carol@l3sod.demo.rw', password: 'Student@1234' },
+        { name: 'David Rugamba', email: 'david@l3sod.demo.rw', password: 'Student@1234' },
+        { name: 'Eve Niyonsaba', email: 'eve@l3sod.demo.rw', password: 'Student@1234' },
+      ];
+
+      for (const s of students) {
+        const user = await UserModel.create({
+          name: s.name,
+          email: s.email,
+          password: s.password,
+          role: 'student',
+          organization_id: org.id,
+          status: 'active',
+        });
+
+        const studentId = await generateStudentId();
+
+        await StudentProfileModel.create({
+          user_id: user.id,
+          student_id: studentId,
+          class_id: cls[0].id,
+          status: 'active',
+        });
+
+        await ClassModel.increment('current_students', { where: { id: cls[0].id } });
+      }
+
+      console.log('✅ Demo organization, org admin, teacher, class l3sod, and 5 students created');
     }
 
     console.log('\n🎉 Seeding complete!\n');
