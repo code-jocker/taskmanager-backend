@@ -400,6 +400,106 @@ class UserController {
       res.status(500).json({ success: false, message: 'Validation failed', error: error.message });
     }
   }
+
+  // Student Dashboard - shows tasks, submissions, and notifications
+  async getStudentDashboard(req, res) {
+    try {
+      const userId = req.user.id;
+      const now = new Date();
+
+      // Get student's profile and class
+      const profile = await StudentProfile.findOne({
+        where: { user_id: userId },
+        include: [
+          { model: Class, as: 'class', include: [{ model: Organization, as: 'organization' }] }
+        ]
+      });
+
+      if (!profile) {
+        return res.status(404).json({ success: false, message: 'Student profile not found' });
+      }
+
+      // Get assigned tasks for the student's class
+      const { Task, Submission, Reminder } = await import('../database.js');
+
+      const tasks = await Task.findAll({
+        where: {
+          class_id: profile.class_id,
+          status: 'published'
+        },
+        include: [
+          { model: Class, as: 'class', attributes: ['id', 'name', 'code'] },
+          { model: User, as: 'creator', attributes: ['id', 'name'] }
+        ],
+        order: [['due_date', 'ASC']]
+      });
+
+      // Get student's submissions for these tasks
+      const taskIds = tasks.map(t => t.id);
+      const submissions = await Submission.findAll({
+        where: { task_id: { [Op.in]: taskIds }, student_id: userId },
+        attributes: ['task_id', 'status', 'score', 'submitted_at', 'is_late', 'feedback']
+      });
+
+      // Create submission map
+      const submissionMap = {};
+      submissions.forEach(sub => {
+        submissionMap[sub.task_id] = sub;
+      });
+
+      // Attach submission status to tasks
+      const tasksWithSubmissions = tasks.map(task => ({
+        ...task.toJSON(),
+        my_submission: submissionMap[task.id] || null,
+        days_until_due: Math.ceil((new Date(task.due_date) - now) / (1000 * 60 * 60 * 24)),
+        is_overdue: new Date(task.due_date) < now,
+        needs_submission: !submissionMap[task.id] || submissionMap[task.id].status === 'draft'
+      }));
+
+      // Get recent reminders (last 7 days)
+      const recentReminders = await Reminder.findAll({
+        where: {
+          user_id: userId,
+          created_at: { [Op.gte]: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) }
+        },
+        include: [{ model: Task, as: 'task', attributes: ['id', 'title', 'due_date'] }],
+        order: [['created_at', 'DESC']],
+        limit: 10
+      });
+
+      // Calculate dashboard stats
+      const totalTasks = tasksWithSubmissions.length;
+      const submittedTasks = tasksWithSubmissions.filter(t => t.my_submission && t.my_submission.status !== 'draft').length;
+      const overdueTasks = tasksWithSubmissions.filter(t => t.is_overdue && t.needs_submission).length;
+      const dueSoonTasks = tasksWithSubmissions.filter(t => !t.is_overdue && t.days_until_due <= 3 && t.needs_submission).length;
+
+      res.json({
+        success: true,
+        data: {
+          profile: {
+            student_id: profile.student_id,
+            class: profile.class,
+            organization: profile.class.organization
+          },
+          tasks: tasksWithSubmissions,
+          stats: {
+            total_tasks: totalTasks,
+            submitted_tasks: submittedTasks,
+            overdue_tasks: overdueTasks,
+            due_soon_tasks: dueSoonTasks,
+            completion_rate: totalTasks > 0 ? Math.round((submittedTasks / totalTasks) * 100) : 0
+          },
+          recent_reminders: recentReminders,
+          upcoming_deadlines: tasksWithSubmissions
+            .filter(t => !t.is_overdue && t.needs_submission)
+            .sort((a, b) => new Date(a.due_date) - new Date(b.due_date))
+            .slice(0, 5)
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ success: false, message: 'Failed to load dashboard', error: error.message });
+    }
+  }
 }
 
 export default new UserController();

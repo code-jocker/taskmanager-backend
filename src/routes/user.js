@@ -80,4 +80,11 @@ router.delete('/:id',
   UserController.deleteUser
 );
 
+// Student dashboard
+router.get('/student/dashboard',
+  roleMiddleware(['student', 'intern']),
+  auditLogger('view_student_dashboard', 'dashboard'),
+  UserController.getStudentDashboard
+);
+
 export default router;

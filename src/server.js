@@ -17,7 +17,7 @@ import classRoutes from './routes/class.js';
 import taskRoutes from './routes/task.js';
 
 // Import services (optional — comment out if not configured)
-// import ReminderService from './services/ReminderService.js';
+import ReminderService from './services/ReminderService.js';
 
 // Load environment variables
 dotenv.config();
@@ -116,7 +116,7 @@ const startServer = async () => {
     });
 
     // Start reminder service (uncomment when configured)
-    // ReminderService.start();
+    ReminderService.start();
 
   } catch (error) {
     console.error('❌ Unable to start server:', error);
