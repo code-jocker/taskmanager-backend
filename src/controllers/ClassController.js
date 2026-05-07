@@ -1,6 +1,7 @@
 import { Class, Subject, User, StudentProfile, Organization, District, Task, Submission } from '../database.js';
 import sequelize from '../database.js';
 import { Op } from 'sequelize';
+import NotificationService from '../services/NotificationService.js';
 
 // Build a clean uppercase slug from a string: "Kigali School" -> "KIGALISCHOOL"
 function slugify(str) {
@@ -17,6 +18,7 @@ class ClassController {
       // Load org + district to build the unique code
       const org = await Organization.findByPk(organization_id, {
         include: [{ model: (await import('../models/District.js')).default, as: 'district' }]
+        
       });
 
       const districtCode = org?.district?.code || 'RW';
@@ -55,6 +57,8 @@ class ClassController {
       const created = await Class.findByPk(cls.id, {
         include: [{ model: User, as: 'manager', attributes: ['id', 'name', 'email', 'role'] }]
       });
+
+      await NotificationService.createNotification(req.user.id, organization_id, 'CREATE', `Created new ${type}: ${name}`, { class_id: cls.id, type }, 'success');
 
       res.status(201).json({ success: true, message: 'Class created successfully', data: created });
     } catch (error) {
@@ -153,6 +157,8 @@ class ClassController {
 
       await cls.update({ name, description, manager_id, status, max_students, schedule });
 
+      await NotificationService.createNotification(req.user.id, req.user.organization_id, 'UPDATE', `Updated ${cls.type}: ${name}`, { class_id: cls.id }, 'info');
+
       res.json({ success: true, message: 'Class updated successfully', data: cls });
     } catch (error) {
       res.status(500).json({ success: false, message: 'Failed to update class', error: error.message });
@@ -169,6 +175,7 @@ class ClassController {
       if (!cls) return res.status(404).json({ success: false, message: 'Class not found' });
 
       await cls.destroy();
+      await NotificationService.createNotification(req.user.id, req.user.organization_id, 'DELETE', `Deleted ${cls.type}: ${cls.name}`, { class_id: cls.id }, 'warning');
       res.json({ success: true, message: 'Class deleted successfully' });
     } catch (error) {
       res.status(500).json({ success: false, message: 'Failed to delete class', error: error.message });
@@ -200,6 +207,8 @@ class ClassController {
         hours_per_week: hours_per_week || 1,
         syllabus
       });
+
+      await NotificationService.createNotification(req.user.id, req.user.organization_id, 'CREATE', `Created subject: ${name} in ${cls.name}`, { subject_id: subject.id, class_id }, 'success');
 
       res.status(201).json({ success: true, message: 'Subject created successfully', data: subject });
     } catch (error) {

@@ -3,6 +3,7 @@ import xlsx from 'xlsx';
 import fs from 'fs';
 import { User, StudentProfile, EmployeeProfile, Organization, Class } from '../database.js';
 import { Op } from 'sequelize';
+import NotificationService from '../services/NotificationService.js';
 
 // Generate unique student ID: ST-xxxx (4-digit sequential)
 async function generateStudentId() {
@@ -120,6 +121,8 @@ class UserController {
           { model: StudentProfile, as: 'studentProfile' }
         ]
       });
+
+      await NotificationService.createNotification(req.user.id, organization_id, 'CREATE', `Created new ${role}: ${name}`, { user_id: user.id, role }, 'success');
 
       res.status(201).json({ success: true, message: 'User created successfully', data: created });
     } catch (error) {
@@ -261,12 +264,15 @@ class UserController {
       // Cleanup uploaded file
       fs.unlinkSync(req.file.path);
 
+      await NotificationService.createImportNotification(req.user.id, organization_id, true, results);
+
       res.json({
         success: true,
         message: `Import complete: ${results.created} created, ${results.skipped} skipped`,
         data: results
       });
     } catch (error) {
+      await NotificationService.createImportNotification(req.user.id, req.user.organization_id, false, { error: error.message });
       res.status(500).json({ success: false, message: 'Import failed', error: error.message });
     }
   }
@@ -337,6 +343,8 @@ class UserController {
 
       await user.update({ name, phone, status });
 
+      await NotificationService.createNotification(req.user.id, req.user.organization_id, 'UPDATE', `Updated user: ${name}`, { user_id: user.id }, 'info');
+
       res.json({ success: true, message: 'User updated successfully', data: user });
     } catch (error) {
       res.status(500).json({ success: false, message: 'Failed to update user', error: error.message });
@@ -354,6 +362,8 @@ class UserController {
 
       await user.destroy(); // paranoid soft delete
       await Organization.decrement('current_users', { where: { id: req.user.organization_id } });
+
+      await NotificationService.createNotification(req.user.id, req.user.organization_id, 'DELETE', `Removed user: ${user.name}`, { user_id: user.id }, 'warning');
 
       res.json({ success: true, message: 'User removed successfully' });
     } catch (error) {
