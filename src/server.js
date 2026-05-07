@@ -89,39 +89,56 @@ app.use(errorHandler);
 
 // Database connection and server startup
 const startServer = async () => {
-  try {
-    // Test database connection
-    await sequelize.authenticate();
-    console.log('✅ Database connection established successfully.');
+  const maxRetries = 5;
+  let retryCount = 0;
 
-    // Sync database
-    await sequelize.sync({ alter: false });
-    console.log('✅ Database synchronized successfully.');
+  const attemptConnection = async () => {
+    try {
+      // Test database connection
+      await sequelize.authenticate();
+      console.log('✅ Database connection established successfully.');
 
-    // Start server
-    const server = app.listen(PORT, () => {
-      console.log(` Server running on port ${PORT}`);
-      console.log(`📊 Environment: ${process.env.NODE_ENV}`);
-      console.log(`🔗 API Base URL: http://localhost:${PORT}/api`);
-      console.log(`💊 Health Check: http://localhost:${PORT}/health`);
-    });
+      // Sync database
+      await sequelize.sync({ alter: false });
+      console.log('✅ Database synchronized successfully.');
 
-    server.on('error', (err) => {
-      if (err.code === 'EADDRINUSE') {
-        console.error(`❌ Port ${PORT} is already in use. Run: npx kill-port ${PORT}`);
+      // Start server
+      const server = app.listen(PORT, () => {
+        console.log(` Server running on port ${PORT}`);
+        console.log(`📊 Environment: ${process.env.NODE_ENV}`);
+        console.log(`🔗 API Base URL: http://localhost:${PORT}/api`);
+        console.log(`💊 Health Check: http://localhost:${PORT}/health`);
+      });
+
+      server.on('error', (err) => {
+        if (err.code === 'EADDRINUSE') {
+          console.error(`❌ Port ${PORT} is already in use. Run: npx kill-port ${PORT}`);
+        } else {
+          console.error('❌ Server error:', err.message);
+        }
+        process.exit(1);
+      });
+
+      // Start reminder service (uncomment when configured)
+      ReminderService.start();
+
+    } catch (error) {
+      retryCount++;
+      const waitTime = Math.min(1000 * Math.pow(2, retryCount), 30000); // Exponential backoff
+      
+      if (retryCount < maxRetries) {
+        console.warn(`⚠️ Connection attempt ${retryCount} failed: ${error.message}`);
+        console.log(`🔄 Retrying in ${waitTime}ms... (Attempt ${retryCount + 1}/${maxRetries})`);
+        setTimeout(attemptConnection, waitTime);
       } else {
-        console.error('❌ Server error:', err.message);
+        console.error('❌ Unable to start server after', maxRetries, 'attempts:', error.message);
+        console.error('🔗 DATABASE_URL:', process.env.DATABASE_URL ? 'Set' : 'Not set');
+        process.exit(1);
       }
-      process.exit(1);
-    });
+    }
+  };
 
-    // Start reminder service (uncomment when configured)
-    ReminderService.start();
-
-  } catch (error) {
-    console.error('❌ Unable to start server:', error);
-    process.exit(1);
-  }
+  attemptConnection();
 };
 
 // Handle graceful shutdown

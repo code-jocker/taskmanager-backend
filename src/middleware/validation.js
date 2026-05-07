@@ -2,19 +2,23 @@ import Joi from 'joi';
 
 export const validateRequest = (schema) => {
   return (req, res, next) => {
-    const { error } = schema.validate(req.body);
+    const { error, value } = schema.validate(req.body, { stripUnknown: true, abortEarly: false });
     
     if (error) {
+      console.error('Validation error details:', error.details);
       return res.status(400).json({
         success: false,
         message: 'Validation error',
-        errors: error.details.map(detail => ({
+        details: error.details.map(detail => ({
           field: detail.path.join('.'),
-          message: detail.message
+          message: detail.message,
+          type: detail.type
         }))
       });
     }
     
+    // Replace body with validated data (stripped unknown fields)
+    req.body = value;
     next();
   };
 };
@@ -23,14 +27,14 @@ export const validateRequest = (schema) => {
 export const schemas = {
   // Organization registration
   organizationRegistration: Joi.object({
-    name: Joi.string().min(2).max(200).required(),
-    type: Joi.string().valid('school', 'company').required(),
+    name: Joi.string().trim().min(2).max(200).required(),
+    type: Joi.string().lowercase().valid('school', 'company').required(),
     district_id: Joi.number().integer().positive().required(),
-    contact_email: Joi.string().email().required(),
-    contact_phone: Joi.string().pattern(/^[+]?[0-9\s\-()]+$/).optional(),
-    address: Joi.string().max(500).optional(),
-    subscription_type: Joi.string().valid('monthly', 'quarterly', 'yearly').default('monthly')
-  }),
+    contact_email: Joi.string().trim().lowercase().email().required(),
+    contact_phone: Joi.string().trim().optional().allow(''),
+    address: Joi.string().trim().max(500).optional().allow(''),
+    subscription_type: Joi.string().lowercase().valid('monthly', 'quarterly', 'yearly').optional().default('monthly')
+  }).unknown('allow'),
 
   // User creation
   userCreation: Joi.object({
