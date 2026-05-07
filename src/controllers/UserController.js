@@ -187,87 +187,195 @@ class UserController {
     }
   }
 
-  // Bulk import students/employees from CSV/Excel
+  // Bulk import users (JSON payload OR legacy Excel upload)
   async bulkImport(req, res) {
-    try {
-      if (!req.file) {
-        return res.status(400).json({ success: false, message: 'No file uploaded' });
-      }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+    const normalizeKeysToLowercase = (obj) => {
+      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+      const out = {};
+      for (const [k, v] of Object.entries(obj)) {
+        out[String(k).toLowerCase()] = v;
+      }
+      return out;
+    };
+
+    const trimStringsDeep = (val) => {
+      if (typeof val === 'string') return val.trim();
+      return val;
+    };
+
+    const normalizeRowToContract = (rawRow) => {
+      const lowered = normalizeKeysToLowercase(rawRow);
+
+      // Accept common header variants for each field.
+      const id =
+        lowered.id ??
+        lowered.user_id ??
+        lowered.userid ??
+        lowered['user id'] ??
+        lowered.student_id ??
+        lowered.studentid ??
+        lowered.student_id_ ??
+        lowered['student id'] ??
+        lowered.employee_id ??
+        lowered.employeeid ??
+        lowered['employee id'] ??
+        null;
+
+      const name = lowered.name ?? lowered.full_name ?? lowered['full name'] ?? null;
+      const email =
+        lowered.email ??
+        lowered['e-mail'] ??
+        lowered['email address'] ??
+        lowered.mail ??
+        null;
+
+      const role =
+        lowered.role ??
+        lowered.user_role ??
+        lowered['user role'] ??
+        lowered.type ??
+        null;
+
+      return { id, name, email, role };
+    };
+
+    const sanitizeContract = (contract) => {
+      const c = { ...contract };
+      c.id = trimStringsDeep(c.id);
+      c.name = trimStringsDeep(c.name);
+      c.email = trimStringsDeep(c.email);
+      if (typeof c.role === 'string') c.role = c.role.trim().toLowerCase();
+      return c;
+    };
+
+    const validateContract = (u) => {
+      const errors = [];
+      const role = u.role;
+
+      if (typeof u.id !== 'string' || u.id.length === 0) errors.push('id must be a non-empty string');
+      if (typeof u.name !== 'string' || u.name.length === 0) errors.push('name must be a non-empty string');
+      if (typeof role !== 'string' || role.length === 0) errors.push('role must be a non-empty string');
+      if (typeof u.email !== 'string' || u.email.length === 0) errors.push('email must be a non-empty string');
+      if (typeof u.email === 'string' && !emailRegex.test(u.email)) errors.push('email must be a valid email');
+
+      const allowedRoles = ['organization_admin', 'teacher', 'student', 'worker', 'intern'];
+      if (typeof role === 'string' && !allowedRoles.includes(role)) errors.push('role is invalid');
+
+      return errors;
+    };
+
+    const upsertUserByEmail = async (contract) => {
       const organization_id = req.user.organization_id;
-      const organization = await Organization.findByPk(organization_id);
 
-      const workbook = xlsx.readFile(req.file.path);
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const rows = xlsx.utils.sheet_to_json(sheet);
+      const [user] = await Promise.all([
+        User.findOne({ where: { organization_id, email: contract.email } })
+      ]);
 
-      if (!rows.length) {
-        return res.status(400).json({ success: false, message: 'File is empty' });
+      if (user) {
+        await user.update({
+          name: contract.name,
+          role: contract.role,
+          status: 'active'
+        });
+        return { imported: false, user };
       }
 
-      const results = { created: 0, skipped: 0, errors: [] };
+      const created = await User.create({
+        name: contract.name,
+        email: contract.email,
+        password: await bcrypt.hash(Math.random().toString(36), 10),
+        role: contract.role,
+        organization_id,
+        status: 'active',
+        created_by: req.user.id
+      });
 
-      for (const row of rows) {
-        try {
-          const role = (row.role || 'student').toLowerCase();
-          const idField = ['student', 'intern'].includes(role) ? row.student_id : row.employee_id;
+      return { imported: true, user: created };
+    };
 
-          if (!idField || !row.name) {
-            results.errors.push({ row: row.name || 'unknown', reason: 'Missing required fields (name, student_id/employee_id)' });
-            results.skipped++;
+    try {
+      // JSON input: { users: [...] }
+      if (req.body && req.body.users) {
+        const rawUsers = req.body.users;
+        if (!Array.isArray(rawUsers)) {
+          return res.status(400).json({ success: false, message: 'Invalid payload: users must be an array' });
+        }
+
+        let imported = 0;
+        let failed = 0;
+
+        for (let i = 0; i < rawUsers.length; i++) {
+          const contract = sanitizeContract(normalizeRowToContract(rawUsers[i]));
+          const errors = validateContract(contract);
+          if (errors.length) {
+            failed++;
             continue;
           }
 
-          // Create placeholder user (status: pending — activated on self-signup)
-          const tempEmail = `pending_${idField}_${organization_id}@placeholder.rw`;
-          const existing = await User.findOne({ where: { organization_id, email: tempEmail } });
-          if (existing) { results.skipped++; continue; }
+          const result = await upsertUserByEmail(contract);
+          if (result.imported) imported++;
+        }
 
-          const user = await User.create({
-            name: row.name,
-            email: tempEmail,
-            password: await bcrypt.hash(Math.random().toString(36), 10),
-            role,
-            organization_id,
-            status: 'pending',
-            created_by: req.user.id
-          });
+        return res.json({
+          success: true,
+          imported,
+          failed,
+          message: 'Bulk import completed successfully'
+        });
+      }
 
-          if (['student', 'intern'].includes(role)) {
-            const classId = row.class_id ? parseInt(row.class_id) : null;
-            await StudentProfile.create({
-              user_id: user.id,
-              student_id: String(idField),
-              class_id: classId,
-              academic_year: row.academic_year || null
-            });
-          } else {
-            await EmployeeProfile.create({
-              user_id: user.id,
-              employee_id: String(idField),
-              department: row.department || 'General',
-              position: row.position || role,
-              employment_type: row.employment_type || 'full_time'
-            });
+      // Legacy multipart/form-data input: Excel file in req.file
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid request format: provide application/json { users: [...] } or upload an Excel file'
+        });
+      }
+
+      const workbook = xlsx.readFile(req.file.path);
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = xlsx.utils.sheet_to_json(sheet, { defval: '' });
+
+      if (!rows.length) {
+        fs.unlinkSync(req.file.path);
+        return res.status(400).json({ success: false, message: 'File is empty' });
+      }
+
+      let imported = 0;
+      let failed = 0;
+
+      for (const row of rows) {
+        try {
+          const contract = sanitizeContract(normalizeRowToContract(row));
+          const errors = validateContract(contract);
+          if (errors.length) {
+            failed++;
+            continue;
           }
 
-          results.created++;
-        } catch (err) {
-          results.errors.push({ row: row.name || 'unknown', reason: err.message });
-          results.skipped++;
+          const result = await upsertUserByEmail(contract);
+          if (result.imported) imported++;
+        } catch (_e) {
+          failed++;
         }
       }
 
-      // Cleanup uploaded file
       fs.unlinkSync(req.file.path);
 
-      res.json({
+      return res.json({
         success: true,
-        message: `Import complete: ${results.created} created, ${results.skipped} skipped`,
-        data: results
+        imported,
+        failed,
+        message: 'Bulk import completed successfully'
       });
     } catch (error) {
-      res.status(500).json({ success: false, message: 'Import failed', error: error.message });
+      // Cleanup best-effort if a file exists
+      if (req.file?.path) {
+        try { fs.unlinkSync(req.file.path); } catch (_) {}
+      }
+      return res.status(500).json({ success: false, message: error?.message || 'Import failed' });
     }
   }
 

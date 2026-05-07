@@ -44,11 +44,19 @@ router.post('/',
   UserController.createUser
 );
 
-// Bulk import students/employees from CSV/Excel
+// Bulk import users (JSON payload OR legacy Excel upload)
 router.post('/bulk-import',
   roleMiddleware(['organization_admin']),
-  (req, res, next) => { req.uploadSubDir = 'imports'; next(); },
-  uploadCSV,
+  (req, res, next) => {
+    // Only apply multer upload parser for multipart requests.
+    // JSON requests must not pass through uploadCSV.
+    req.uploadSubDir = 'imports';
+    const ct = req.headers['content-type'] || '';
+    if (ct.toLowerCase().includes('multipart/form-data')) {
+      return uploadCSV(req, res, next);
+    }
+    return next();
+  },
   auditLogger('bulk_import_users', 'user'),
   UserController.bulkImport
 );
