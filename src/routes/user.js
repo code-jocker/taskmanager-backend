@@ -97,13 +97,13 @@ router.get('/student/dashboard',
 
 // Notifications
 router.get('/notifications',
-  auditLogger('view_notifications', 'dashboard'),
+  // Auth middleware sets req.user; keep route light for realtime stability.
   UserController.getNotifications
 );
 
 router.patch('/notifications/:id/read',
-  auditLogger('read_notification', 'dashboard'),
   UserController.markNotificationRead
 );
+
 
 export default router;
