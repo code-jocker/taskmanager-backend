@@ -24,7 +24,12 @@ dotenv.config();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
+
+// Needed for reverse proxies (e.g., Render) so express-rate-limit can read client IPs.
+app.set('trust proxy', true);
+
 const PORT = process.env.PORT || 5000;
+
 
 // Security middleware
 app.use(securityHeaders);
