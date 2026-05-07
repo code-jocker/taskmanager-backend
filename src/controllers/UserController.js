@@ -254,7 +254,12 @@ class UserController {
       const errors = [];
       const role = u.role;
 
-      if (typeof u.id !== 'string' || u.id.length === 0) errors.push('id must be a non-empty string');
+      // id is NOT required for user creation in our model (DB auto-increment).
+      // It’s only accepted for backward compatibility with older import templates.
+      if (typeof u.id !== 'undefined' && u.id !== null && typeof u.id !== 'string') {
+        errors.push('id must be a string');
+      }
+
       if (typeof u.name !== 'string' || u.name.length === 0) errors.push('name must be a non-empty string');
       if (typeof role !== 'string' || role.length === 0) errors.push('role must be a non-empty string');
       if (typeof u.email !== 'string' || u.email.length === 0) errors.push('email must be a non-empty string');
