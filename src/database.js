@@ -297,17 +297,6 @@ const AuditLog = sequelize.define('AuditLog', {
   error_message:    { type: DataTypes.TEXT },
 }, { timestamps: true, updatedAt: false, paranoid: false });
 
-const Notification = sequelize.define('Notification', {
-  id:              { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-  user_id:         { type: DataTypes.INTEGER, allowNull: false },
-  organization_id: { type: DataTypes.INTEGER, allowNull: false },
-  type:            { type: DataTypes.ENUM('CREATE', 'UPDATE', 'DELETE', 'IMPORT'), allowNull: false },
-  action_performed:{ type: DataTypes.STRING(255), allowNull: false },
-  metadata:        { type: DataTypes.JSON },
-  is_read:         { type: DataTypes.BOOLEAN, defaultValue: false },
-  severity:        { type: DataTypes.ENUM('info', 'success', 'warning', 'error'), defaultValue: 'info' },
-}, { timestamps: true, updatedAt: false });
-
 // ── 3. Associations ───────────────────────────────────────────────────────────
 District.hasMany(DistrictAdmin,  { foreignKey: 'district_id', as: 'admins'        });
 District.hasMany(Organization,   { foreignKey: 'district_id', as: 'organizations' });
@@ -379,15 +368,12 @@ AuditLog.belongsTo(User,          { foreignKey: 'user_id',           as: 'user' 
 AuditLog.belongsTo(DistrictAdmin, { foreignKey: 'district_admin_id', as: 'districtAdmin' });
 AuditLog.belongsTo(Organization,  { foreignKey: 'organization_id',   as: 'organization'  });
 
-Notification.belongsTo(User,         { foreignKey: 'user_id',         as: 'user'         });
-Notification.belongsTo(Organization, { foreignKey: 'organization_id', as: 'organization' });
-
 // ── 4. Exports ────────────────────────────────────────────────────────────────
 export {
   sequelize,
   District, DistrictAdmin, Organization, User,
   Class, Subject, StudentProfile, EmployeeProfile,
-  Task, Submission, Reminder, Payment, ApprovalRequest, AuditLog, Notification,
+  Task, Submission, Reminder, Payment, ApprovalRequest, AuditLog,
 };
 
 export default sequelize;

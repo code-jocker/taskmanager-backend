@@ -15,7 +15,6 @@ import organizationRoutes from './routes/organization.js';
 import userRoutes from './routes/user.js';
 import classRoutes from './routes/class.js';
 import taskRoutes from './routes/task.js';
-import notificationRoutes from './routes/notification.js';
 
 // Import services (optional — comment out if not configured)
 import ReminderService from './services/ReminderService.js';
@@ -81,7 +80,6 @@ app.use('/api/organizations', organizationRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/classes', classRoutes);
 app.use('/api/tasks', taskRoutes);
-app.use('/api/notifications', notificationRoutes);
 
 // 404 handler
 app.use(notFoundHandler);

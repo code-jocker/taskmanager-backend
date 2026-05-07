@@ -3,7 +3,6 @@ import sequelize from '../database.js';
 import { Op } from 'sequelize';
 import { getFileUrl } from '../services/FileUploadService.js';
 import EmailService from '../services/EmailService.js';
-import NotificationService from '../services/NotificationService.js';
 
 class TaskController {
   // Create task
@@ -62,7 +61,6 @@ class TaskController {
       }
 
       const statusMessage = req.user.role === 'teacher' ? 'Task created and published' : 'Task created as draft';
-      await NotificationService.createNotification(req.user.id, req.user.organization_id, 'CREATE', `Created task: ${task.title}`, { task_id: task.id }, 'success');
       res.status(201).json({ success: true, message: statusMessage, data: task });
     } catch (error) {
       res.status(500).json({ success: false, message: 'Failed to create task', error: error.message });
@@ -340,8 +338,6 @@ class TaskController {
         await task.update({ title, description, instructions, due_date, priority, status });
       }
 
-      await NotificationService.createNotification(req.user.id, req.user.organization_id, 'UPDATE', `Updated task: ${task.title}`, { task_id: task.id }, 'info');
-
       res.json({ success: true, message: 'Task updated successfully', data: task });
     } catch (error) {
       res.status(500).json({ success: false, message: 'Failed to update task', error: error.message });
@@ -358,7 +354,6 @@ class TaskController {
       if (!task) return res.status(404).json({ success: false, message: 'Task not found' });
 
       await task.destroy();
-      await NotificationService.createNotification(req.user.id, req.user.organization_id, 'DELETE', `Deleted task: ${task.title}`, { task_id: task.id }, 'warning');
       res.json({ success: true, message: 'Task deleted successfully' });
     } catch (error) {
       res.status(500).json({ success: false, message: 'Failed to delete task', error: error.message });
