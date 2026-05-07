@@ -241,8 +241,29 @@ class TaskController {
         data: submission
       });
     } catch (error) {
-      res.status(500).json({ success: false, message: 'Submission failed', error: error.message });
+      // Return more context to make deployment issues debuggable.
+      console.error('Submission failed:', {
+        taskId: req.params?.id,
+        studentId: req.user?.id,
+        hasFile: !!req.file,
+        fileField: req.file?.fieldname,
+        error: error?.message,
+      });
+
+      res.status(500).json({
+        success: false,
+        message: 'Submission failed',
+        error: error?.message,
+        details: {
+          taskId: req.params?.id,
+          studentId: req.user?.id,
+          hasFile: !!req.file,
+          fileName: req.file?.originalname || null,
+          fileType: req.file?.mimetype || null,
+        }
+      });
     }
+
   }
 
   // Get all submissions for a task (teacher/admin)
