@@ -46,15 +46,36 @@ const allowedOrigins = process.env.ALLOWED_ORIGINS
     ]
 
 app.use(cors({
+  // Allow requests from allowed origins OR localhost (dev)
   origin: (origin, cb) => {
     // Allow requests with no origin (mobile apps, Postman, etc.)
-    if (!origin || allowedOrigins.includes(origin)) return cb(null, true)
-    cb(new Error('Not allowed by CORS'))
+    if (!origin) return cb(null, true)
+
+    // Always allow local dev
+    if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+      return cb(null, true)
+    }
+
+    if (!allowedOrigins.includes(origin)) {
+      return cb(new Error('Not allowed by CORS'))
+    }
+
+    return cb(null, true)
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  // Ensure CORS headers are returned even for preflight.
+  // Some proxy setups require an explicit success for OPTIONS.
+  optionsSuccessStatus: 204,
 }));
+
+// Explicitly handle CORS preflight.
+app.options('*', (req, res) => {
+  res.sendStatus(204);
+});
+
+
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
