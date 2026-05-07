@@ -39,7 +39,29 @@ class TaskController {
         status: 'draft'
       });
 
-      res.status(201).json({ success: true, message: 'Task created as draft', data: task });
+      // Auto-publish task for teachers (immediate visibility to students)
+      if (req.user.role === 'teacher') {
+        await task.update({ status: 'published', published_at: new Date() });
+
+        // Notify students in the class
+        if (task.class_id) {
+          const students = await StudentProfile.findAll({
+            where: { class_id: task.class_id },
+            include: [{ model: User, as: 'user', where: { status: 'active' } }]
+          });
+
+          for (const profile of students) {
+            try {
+              await EmailService.sendTaskAssigned(profile.user, task);
+            } catch (err) {
+              console.error(`Email failed for ${profile.user.email}:`, err.message);
+            }
+          }
+        }
+      }
+
+      const statusMessage = req.user.role === 'teacher' ? 'Task created and published' : 'Task created as draft';
+      res.status(201).json({ success: true, message: statusMessage, data: task });
     } catch (error) {
       res.status(500).json({ success: false, message: 'Failed to create task', error: error.message });
     }
@@ -289,7 +311,32 @@ class TaskController {
       if (task.status === 'closed') return res.status(400).json({ success: false, message: 'Cannot edit a closed task' });
 
       const { title, description, instructions, due_date, priority, status } = req.body;
-      await task.update({ title, description, instructions, due_date, priority, status });
+
+      // If publishing task, also send notifications
+      if (status === 'published' && task.status === 'draft') {
+        // Notify students in the class
+        if (task.class_id) {
+          const students = await StudentProfile.findAll({
+            where: { class_id: task.class_id },
+            include: [{ model: User, as: 'user', where: { status: 'active' } }]
+          });
+
+          for (const profile of students) {
+            try {
+              await EmailService.sendTaskAssigned(profile.user, task);
+            } catch (err) {
+              console.error(`Email failed for ${profile.user.email}:`, err.message);
+            }
+          }
+        }
+
+        await task.update({
+          title, description, instructions, due_date, priority, status,
+          published_at: new Date()
+        });
+      } else {
+        await task.update({ title, description, instructions, due_date, priority, status });
+      }
 
       res.json({ success: true, message: 'Task updated successfully', data: task });
     } catch (error) {

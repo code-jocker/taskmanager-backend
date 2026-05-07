@@ -419,6 +419,13 @@ class UserController {
         return res.status(404).json({ success: false, message: 'Student profile not found' });
       }
 
+      console.log('Student profile found:', {
+        userId,
+        student_id: profile.student_id,
+        class_id: profile.class_id,
+        class_name: profile.class?.name
+      });
+
       // Get assigned tasks for the student's class
       const { Task, Submission, Reminder } = await import('../database.js');
 
@@ -432,6 +439,12 @@ class UserController {
           { model: User, as: 'creator', attributes: ['id', 'name'] }
         ],
         order: [['due_date', 'ASC']]
+      });
+
+      console.log('Tasks found for class:', {
+        class_id: profile.class_id,
+        taskCount: tasks.length,
+        tasks: tasks.map(t => ({ id: t.id, title: t.title, status: t.status, class_id: t.class_id }))
       });
 
       // Get student's submissions for these tasks

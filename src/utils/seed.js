@@ -82,6 +82,27 @@ async function seed() {
     await sequelize.authenticate();
     console.log('✅ Database connected');
 
+    // Clear existing data for fresh start
+    console.log('🧹 Clearing existing data...');
+    const { Task, Submission, User, Class, Organization, District, DistrictAdmin, StudentProfile, EmployeeProfile, Subject, Reminder, Payment, ApprovalRequest, AuditLog } = await import('../database.js');
+
+    // Clear in correct order (respecting foreign key constraints)
+    await Submission.destroy({ where: {}, force: true });
+    await Reminder.destroy({ where: {}, force: true });
+    await Task.destroy({ where: {}, force: true });
+    await Subject.destroy({ where: {}, force: true });
+    await StudentProfile.destroy({ where: {}, force: true });
+    await EmployeeProfile.destroy({ where: {}, force: true });
+    await User.destroy({ where: {}, force: true });
+    await Class.destroy({ where: {}, force: true });
+    await Payment.destroy({ where: {}, force: true });
+    await ApprovalRequest.destroy({ where: {}, force: true });
+    await Organization.destroy({ where: {}, force: true });
+    await DistrictAdmin.destroy({ where: {}, force: true });
+    await AuditLog.destroy({ where: {}, force: true });
+
+    console.log('✅ Data cleared');
+
     // Seed districts
     for (const d of DISTRICTS) {
       await District.findOrCreate({
@@ -172,6 +193,7 @@ async function seed() {
         where: { name: 'l3sod' },
         defaults: {
           name: 'l3sod',
+          code: 'L3SOD2024',
           description: 'Demo Class L3SOD',
           manager_id: teacher[0].id,
           type: 'class',
@@ -231,6 +253,10 @@ async function seed() {
     process.exit(0);
   } catch (err) {
     console.error('❌ Seed failed:', err.message);
+    console.error('Full error:', err);
+    if (err.errors) {
+      err.errors.forEach(e => console.error('Validation error:', e.message, e.path));
+    }
     process.exit(1);
   }
 }
