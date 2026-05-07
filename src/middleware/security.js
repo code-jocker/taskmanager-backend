@@ -7,7 +7,11 @@ export const generalLimiter = rateLimit({
   message:  { success: false, message: 'Too many requests. Please try again later.' },
   standardHeaders: true,
   legacyHeaders:   false,
+  // Prevent express-rate-limit from crashing on proxy headers.
+  // Render/Proxies may set X-Forwarded-For.
+  trustProxy: false,
 });
+
 
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
