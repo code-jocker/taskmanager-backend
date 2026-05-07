@@ -95,4 +95,15 @@ router.get('/student/dashboard',
   UserController.getStudentDashboard
 );
 
+// Notifications
+router.get('/notifications',
+  auditLogger('view_notifications', 'dashboard'),
+  UserController.getNotifications
+);
+
+router.patch('/notifications/:id/read',
+  auditLogger('read_notification', 'dashboard'),
+  UserController.markNotificationRead
+);
+
 export default router;

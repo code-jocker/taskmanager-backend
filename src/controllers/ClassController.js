@@ -13,6 +13,7 @@ class ClassController {
     try {
       const { name, description, manager_id, type, academic_year, semester, max_students } = req.body;
       const organization_id = req.user.organization_id;
+      
 
       // Load org + district to build the unique code
       const org = await Organization.findByPk(organization_id, {

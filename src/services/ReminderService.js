@@ -39,16 +39,18 @@ class ReminderService {
           });
           if (submitted) continue;
 
-          // Check if reminder already sent for this window
+          // Check if reminder already sent around this run window to avoid duplicates
           const alreadySent = await Reminder.findOne({
             where: {
               task_id: task.id,
               user_id: user.id,
               type: 'email',
-              sent_at: { [Op.gte]: new Date(now.getTime() - 60 * 60 * 1000) }
+              reminder_time: { [Op.between]: [new Date(now.getTime()), new Date(in24h.getTime())] },
+              status: { [Op.in]: ['sent', 'pending'] }
             }
           });
           if (alreadySent) continue;
+
 
           // Send email reminder
           try {

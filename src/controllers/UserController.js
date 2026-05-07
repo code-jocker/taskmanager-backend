@@ -14,6 +14,7 @@ async function generateStudentId() {
     }
   });
 
+
   // Extract numbers and find max
   let maxNum = 0;
   profiles.forEach(profile => {
@@ -511,6 +512,58 @@ class UserController {
       });
     } catch (error) {
       res.status(500).json({ success: false, message: 'Validation failed', error: error.message });
+    }
+  }
+
+  // Get notifications for current user (latest first)
+  async getNotifications(req, res) {
+    try {
+      const userId = req.user.id;
+      const { limit = 20 } = req.query;
+
+      const reminders = await (await import('../database.js')).Reminder.findAll({
+        where: {
+          user_id: userId,
+          ...(req.query.status ? { status: req.query.status } : {})
+        },
+        order: [['created_at', 'DESC']],
+        limit: parseInt(limit)
+      });
+
+      res.json({
+        success: true,
+        data: reminders
+      });
+    } catch (error) {
+      res.status(500).json({ success: false, message: 'Failed to load notifications', error: error.message });
+    }
+  }
+
+  // Mark a notification as read
+  async markNotificationRead(req, res) {
+    try {
+      const userId = req.user.id;
+      const { id } = req.params;
+
+      const reminder = await (await import('../database.js')).Reminder.findOne({
+        where: { id, user_id: userId },
+      });
+
+      if (!reminder) return res.status(404).json({ success: false, message: 'Notification not found' });
+
+      // If model has read_at/use is_read, set it; otherwise keep status-based flow.
+      if (reminder.read_at !== undefined || Object.prototype.hasOwnProperty.call(reminder.dataValues || {}, 'read_at')) {
+        await reminder.update({ read_at: new Date(), status: reminder.status === 'pending' ? 'sent' : reminder.status });
+      } else if (reminder.is_read !== undefined || Object.prototype.hasOwnProperty.call(reminder.dataValues || {}, 'is_read')) {
+        await reminder.update({ is_read: true, read_at: new Date() });
+      } else {
+        // Fallback: set status to sent (no real read tracking in DB yet)
+        await reminder.update({ status: 'sent' });
+      }
+
+      res.json({ success: true, message: 'Notification marked as read', data: reminder });
+    } catch (error) {
+      res.status(500).json({ success: false, message: 'Failed to mark notification as read', error: error.message });
     }
   }
 
