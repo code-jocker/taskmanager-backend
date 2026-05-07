@@ -54,7 +54,7 @@ class OrganizationController {
       }
 
       const subType = subscription_type || 'monthly';
-      const code    = generateOrgCode(district.code);
+      const code    = await generateOrgCode(district.code);
       const subscriptionEnd = calculateSubscriptionEnd(subType, new Date());
       const amount  = getSubscriptionAmount(subType, type);
 
@@ -340,9 +340,39 @@ function getSubscriptionAmount(subscriptionType, orgType) {
   return prices[orgType]?.[subscriptionType] || 50000;
 }
 
-function generateOrgCode(districtCode = 'RW') {
+async function generateOrgCode(districtCode = 'RW') {
   const year = new Date().getFullYear();
-  return `${districtCode.substring(0, 3).toUpperCase()}-${year}`;
+  const prefix = `${districtCode.substring(0, 3).toUpperCase()}-${year}`;
+  // Get all existing codes that match the pattern
+  const organizations = await Organization.findAll({
+    attributes: ['code'],
+    where: {
+      code: { [Op.like]: `${prefix}-%` }
+    }
+  });
+
+  // Extract numbers and find max
+  let maxNum = 0;
+  organizations.forEach(org => {
+    const match = org.code.match(new RegExp(`^${prefix}-(\\d{3})$`));
+    if (match) {
+      const num = parseInt(match[1], 10);
+      if (num > maxNum) maxNum = num;
+    }
+  });
+
+  // Next number
+  const nextNum = maxNum + 1;
+  const newCode = `${prefix}-${nextNum.toString().padStart(3, '0')}`;
+
+  // Check if exists (to handle race conditions)
+  const existing = await Organization.findOne({ where: { code: newCode } });
+  if (existing) {
+    // If collision, recurse (though unlikely)
+    return await generateOrgCode(districtCode);
+  }
+
+  return newCode;
 }
 
 function calculateSubscriptionEnd(subscriptionType, fromDate) {
