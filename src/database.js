@@ -191,8 +191,19 @@ const Task = sequelize.define('Task', {
   late_submission_allowed: { type: DataTypes.BOOLEAN, defaultValue: true },
   late_penalty_percentage: { type: DataTypes.INTEGER, defaultValue: 10 },
   total_submissions:       { type: DataTypes.INTEGER, defaultValue: 0 },
-  graded_submissions:      { type: DataTypes.INTEGER, defaultValue: 0 },
+  graded_submissions:      { type: DataTypes.INTEGER, defaultValue: 0 }
 }, { paranoid: true, timestamps: true });
+
+// Task prototype methods
+Task.prototype.isOverdue = function() {
+  return new Date() > new Date(this.due_date);
+};
+
+Task.prototype.canSubmit = function() {
+  if (this.status !== 'published') return false;
+  if (!this.late_submission_allowed && this.isOverdue()) return false;
+  return true;
+};
 
 const Submission = sequelize.define('Submission', {
   id:             { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
@@ -214,9 +225,27 @@ const Submission = sequelize.define('Submission', {
   graded_at:      { type: DataTypes.DATE },
   attempt_number: { type: DataTypes.INTEGER, defaultValue: 1 },
 }, {
-  paranoid: true, timestamps: true,
+  paranoid: true,
+  timestamps: true,
+  hooks: {
+    beforeUpdate: (submission) => {
+      if (submission.score && submission.max_score) {
+        submission.percentage = (submission.score / submission.max_score) * 100;
+      }
+    }
+  },
   indexes: [{ fields: ['task_id', 'student_id'], unique: true }],
 });
+
+// Submission prototype methods
+Submission.prototype.calculateGrade = function() {
+  if (!this.percentage) return null;
+  if (this.percentage >= 90) return 'A';
+  if (this.percentage >= 80) return 'B';
+  if (this.percentage >= 70) return 'C';
+  if (this.percentage >= 60) return 'D';
+  return 'F';
+};
 
 const Reminder = sequelize.define('Reminder', {
   id:            { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
@@ -278,6 +307,15 @@ const ApprovalRequest = sequelize.define('ApprovalRequest', {
     },
   },
 });
+
+// ApprovalRequest prototype methods
+ApprovalRequest.prototype.isOverdue = function() {
+  return this.sla_due_date && new Date() > new Date(this.sla_due_date) && this.status === 'pending';
+};
+
+ApprovalRequest.prototype.shouldEscalate = function() {
+  return this.isOverdue() && !this.escalated;
+};
 
 const AuditLog = sequelize.define('AuditLog', {
   id:               { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
